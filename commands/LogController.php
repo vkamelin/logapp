@@ -75,6 +75,9 @@ class LogController extends Controller
         $parse = new NginxLogParser();
         $parser = Parser::create();
 
+        $dailyUrl = [];
+        $dailyBrowser = [];
+
         foreach ($files as $file) {
             $handle = fopen($file, 'r');
 
@@ -87,6 +90,12 @@ class LogController extends Controller
                 while (($line = fgets($handle)) !== false) {
                     try {
                         $entry = $parse->parse($line);
+                    } catch (\Exception $e) {
+                        $this->error($e);
+                        continue;
+                    }
+
+                    try {
                         $result = $parser->parse($entry->http_user_agent);
 
                         $browser = null;
@@ -116,36 +125,46 @@ class LogController extends Controller
                         $url = explode(' ', $entry->request)[1];
 
                         $timestamp = strtotime($entry->time_local);
+                        $date = date('Y-m-d', $timestamp);
+                        $time = date('H:i:s', $timestamp);
+                        $urlHash = md5($url);
 
                         $data[] = [
                             'ip' => $entry->ip,
                             'url' => $url,
+                            'urlHash' => $urlHash,
                             'userAgent' => $entry->http_user_agent,
                             'os' => $os,
                             'arch' => $architecture,
                             'browser' => $browser,
-                            'date' => date('Y-m-d', $timestamp),
-                            'time' => date('H:i:s', $timestamp)
+                            'date' => $date,
+                            'time' => $time
                         ];
+
+                        if (!isset($dailyUrl[$date][$urlHash])) {
+                            $dailyUrl[$date][$urlHash] = 1;
+                        } else {
+                            $dailyUrl[$date][$urlHash]++;
+                        }
+
+                        if (!isset($dailyBrowser[$date][$browser])) {
+                            $dailyBrowser[$date][$browser] = 1;
+                        } else {
+                            $dailyBrowser[$date][$browser]++;
+                        }
 
                         $i++;
 
                         if ($i === 100) {
                             Yii::$app->db->createCommand()
-                                ->batchInsert('log', ['ip', 'url', 'userAgent', 'os', 'arch', 'browser', 'date', 'time'], $data)
+                                ->batchInsert('log', ['ip', 'url', 'urlHash', 'userAgent', 'os', 'arch', 'browser', 'date', 'time'], $data)
                                 ->execute();
 
                             $i = 0;
                             $data = [];
                         }
                     } catch (\Exception $e) {
-                        if ($this->showErrors === 'yes') {
-                            $this->stdout($e . PHP_EOL, Console::FG_RED);
-                        }
-
-                        if ($this->logErrors === 'yes') {
-                            Yii::warning($e);
-                        }
+                        $this->error($e);
                     }
                 }
 
@@ -154,6 +173,38 @@ class LogController extends Controller
                 return $this->exitError('Cannot read file "' . $file . '"');
             }
         }
+
+        $dailyUrlData = [];
+
+        foreach ($dailyUrl as $date => $data) {
+            foreach ($data as $urlHash => $total) {
+                $dailyUrlData[] = [
+                    'date'    => $date,
+                    'urlHash' => $urlHash,
+                    'total'   => $total
+                ];
+            }
+        }
+
+        Yii::$app->db->createCommand()
+            ->batchInsert('log_daily_url', ['date', 'urlHash', 'total'], $dailyUrlData)
+            ->execute();
+
+        $dailyBrowserData = [];
+
+        foreach ($dailyBrowser as $date => $data) {
+            foreach ($data as $browser => $total) {
+                $dailyBrowserData[] = [
+                    'date'    => $date,
+                    'browser' => $browser,
+                    'total'   => $total
+                ];
+            }
+        }
+
+        Yii::$app->db->createCommand()
+            ->batchInsert('log_daily_browser', ['date', 'browser', 'total'], $dailyBrowserData)
+            ->execute();
 
         $this->clearDir($this->tmpDir);
 
@@ -218,7 +269,7 @@ class LogController extends Controller
         }
     }
 
-    private function exitError(string $errorMessage): int
+    private function error(string $errorMessage): void
     {
         if ($this->showErrors === 'yes') {
             $this->stdout($errorMessage . PHP_EOL, Console::FG_RED);
@@ -227,6 +278,11 @@ class LogController extends Controller
         if ($this->logErrors === 'yes') {
             Yii::warning($errorMessage);
         }
+    }
+
+    private function exitError(string $errorMessage): int
+    {
+        $this->error($errorMessage);
 
         return ExitCode::UNSPECIFIED_ERROR;
     }

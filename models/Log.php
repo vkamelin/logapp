@@ -8,6 +8,7 @@ use yii\db\ActiveRecord;
  * @property integer $id
  * @property string $ip
  * @property string $url
+ * @property string $urlHash
  * @property string $userAgent
  * @property string $os
  * @property string $arch
@@ -35,7 +36,8 @@ class Log extends ActiveRecord
         return [
             'id' => 'ID',
             'ip' => 'IP',
-            'url' => 'UEL',
+            'url' => 'URL',
+            'url' => 'URL Hash',
             'userAgent' => 'User Agent',
             'os' => 'Operating System',
             'arch' => 'Architecture',
@@ -52,11 +54,11 @@ class Log extends ActiveRecord
     public function rules(): array
     {
         return [
-            // name, email, subject и body атрибуты обязательны
             [['ip', 'url', 'userAgent', 'dateTime'], 'required'],
             ['ip', 'string', 'max' => 50],
             ['ip', 'ip'],
             ['url', 'string', 'max' => 1000],
+            ['urlHash', 'string', 'max' => 32],
             ['userAgent', 'string', 'max' => 200],
             [['os', 'browser'], 'string', 'max' => 20],
             ['arch', 'string', 'max' => 3],

@@ -7,6 +7,7 @@
 
 namespace app\commands;
 
+use app\models\Log;
 use yii\console\Controller;
 use yii\console\ExitCode;
 
@@ -27,7 +28,7 @@ class HelloController extends Controller
      */
     public function actionIndex($message = 'hello world')
     {
-        echo $message . "\n";
+        $entries = Log::find()->select('url')->distinct()->asArray()->column(); var_dump($entries);
 
         return ExitCode::OK;
     }
